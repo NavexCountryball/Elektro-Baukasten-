@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Steckplatte</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #222;
+            color: white;
+            font-family: sans-serif;
+        }
+
+        #toolbar {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            background: #333;
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .tool {
+            padding: 10px 15px;
+            background: #555;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        canvas {
+            touch-action: none;
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="board"></canvas>
+
+<div id="toolbar">
+    <div class="tool" onclick="setMode('elektronik')">Elektronik</div>
+    <div class="tool" onclick="setMode('logik')">Logik</div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
