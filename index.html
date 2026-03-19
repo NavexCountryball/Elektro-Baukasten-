@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <title>Steckplatte</title>
+    <title>Virtueller Baukasten</title>
     <style>
         body {
             margin: 0;
@@ -17,17 +17,32 @@
             bottom: 0;
             width: 100%;
             background: #333;
-            padding: 10px;
+            padding: 6px 8px;
             display: flex;
-            gap: 10px;
+            gap: 6px;
             justify-content: center;
+            align-items: center;
+            box-sizing: border-box;
         }
 
         .tool {
-            padding: 10px 15px;
+            padding: 6px 10px;
             background: #555;
-            border-radius: 5px;
+            border-radius: 4px;
             cursor: pointer;
+            user-select: none;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .tool.active {
+            background: #888;
+        }
+
+        #mode-label {
+            margin-right: 10px;
+            font-size: 12px;
+            opacity: 0.8;
         }
 
         canvas {
@@ -40,8 +55,16 @@
 <canvas id="board"></canvas>
 
 <div id="toolbar">
-    <div class="tool" onclick="setMode('elektronik')">Elektronik</div>
-    <div class="tool" onclick="setMode('logik')">Logik</div>
+    <span id="mode-label">Modus: Elektronik</span>
+    <div class="tool" data-mode="elektronik">Elektronik</div>
+    <div class="tool" data-mode="logik">Logik</div>
+    <div class="tool" data-add="LED">LED</div>
+    <div class="tool" data-add="SWITCH">Schalter</div>
+    <div class="tool" data-add="AND">AND</div>
+    <div class="tool" data-add="OR">OR</div>
+    <div class="tool" data-add="NOT">NOT</div>
+    <div class="tool" id="save-btn">Speichern</div>
+    <div class="tool" id="load-btn">Laden</div>
 </div>
 
 <script src="app.js"></script>
