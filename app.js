@@ -82,15 +82,15 @@ function createComponent(type, x, y, mode) {
 
 function worldToScreen(x, y) {
     return {
-        x: (x + pan.x) * zoom,
-        y: (y + pan.y) * zoom
+        x: (x - pan.x) * zoom,
+        y: (y - pan.y) * zoom
     };
 }
 
 function screenToWorld(x, y) {
     return {
-        x: x / zoom - pan.x,
-        y: y / zoom - pan.y
+        x: x / zoom + pan.x,
+        y: y / zoom + pan.y
     };
 }
 
@@ -117,7 +117,7 @@ function getPinPosition(comp, pin) {
 
 function drawGrid() {
     ctx.save();
-    ctx.translate(pan.x * zoom, pan.y * zoom);
+    ctx.translate(-pan.x * zoom, -pan.y * zoom);
     ctx.scale(zoom, zoom);
 
     ctx.strokeStyle = "#333";
@@ -126,17 +126,17 @@ function drawGrid() {
     const width = canvas.width / zoom;
     const height = canvas.height / zoom;
 
-    for (let x = -pan.x % gridSize; x < width; x += gridSize) {
+    for (let x = Math.floor(pan.x / gridSize) * gridSize; x < pan.x + width; x += gridSize) {
         ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
+        ctx.moveTo(x, pan.y);
+        ctx.lineTo(x, pan.y + height);
         ctx.stroke();
     }
 
-    for (let y = -pan.y % gridSize; y < height; y += gridSize) {
+    for (let y = Math.floor(pan.y / gridSize) * gridSize; y < pan.y + height; y += gridSize) {
         ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
+        ctx.moveTo(pan.x, y);
+        ctx.lineTo(pan.x + width, y);
         ctx.stroke();
     }
 
@@ -145,7 +145,7 @@ function drawGrid() {
 
 function drawComponents() {
     ctx.save();
-    ctx.translate(pan.x * zoom, pan.y * zoom);
+    ctx.translate(-pan.x * zoom, -pan.y * zoom);
     ctx.scale(zoom, zoom);
 
     components.forEach(c => {
@@ -195,7 +195,7 @@ function drawComponents() {
 
 function drawWires() {
     ctx.save();
-    ctx.translate(pan.x * zoom, pan.y * zoom);
+    ctx.translate(-pan.x * zoom, -pan.y * zoom);
     ctx.scale(zoom, zoom);
 
     ctx.strokeStyle = "#0f8";
@@ -259,7 +259,10 @@ function simulate() {
     // 3. mehrmals durchlaufen, um Signale zu propagieren
     for (let iter = 0; iter < 5; iter++) {
         components.forEach(c => {
-            if (c.mode !== "logik" && c.type !== "LED" && c.type !== "SWITCH") return;
+            // Nur in Logik-Modus simulieren (außer LED und SWITCH)
+            if (c.mode !== "logik") {
+                if (c.type !== "LED" && c.type !== "SWITCH") return;
+            }
 
             if (c.type === "SWITCH") {
                 // state bleibt wie er ist
@@ -472,6 +475,13 @@ const tools = Array.from(document.querySelectorAll(".tool"));
 const modeLabel = document.getElementById("mode-label");
 const saveBtn = document.getElementById("save-btn");
 const loadBtn = document.getElementById("load-btn");
+
+// Toolbar-Button für Elektronik-Modus als aktiv markieren
+tools.forEach(tool => {
+    if (tool.getAttribute("data-mode") === "elektronik") {
+        tool.classList.add("active");
+    }
+});
 
 tools.forEach(tool => {
     const modeAttr = tool.getAttribute("data-mode");
