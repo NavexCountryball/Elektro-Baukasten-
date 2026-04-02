@@ -1,13 +1,13 @@
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
 
-function resize() {
+// Canvas auf volle Größe setzen
+function resizeCanvas() {
     canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    render();
+    canvas.height = window.innerHeight - 50; // 50px für Toolbar
 }
-window.addEventListener("resize", resize);
-resize();
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
 
 let gridSize = 30;
 let mode = "elektronik";
@@ -16,8 +16,7 @@ let wires = [];
 
 let draggingComp = null;
 let draggingOffset = { x: 0, y: 0 };
-
-let draggingWire = null; // { from: {compId,pinIndex}, tempPos:{x,y} }
+let draggingWire = null;
 
 let pan = { x: 0, y: 0 };
 let zoom = 1;
@@ -25,14 +24,12 @@ let zoom = 1;
 let lastTouchDist = null;
 let lastPanCenter = null;
 
-// IDs
 let nextId = 1;
 function createId() {
     return nextId++;
 }
 
-// --- Komponenten-Definitionen ---
-
+// --- Komponenten erstellen ---
 function createComponent(type, x, y, mode) {
     const id = createId();
     const base = {
@@ -43,7 +40,8 @@ function createComponent(type, x, y, mode) {
         w: 80,
         h: 40,
         mode,
-        pins: []
+        pins: [],
+        state: false
     };
 
     if (type === "LED") {
@@ -52,34 +50,29 @@ function createComponent(type, x, y, mode) {
         base.pins = [
             { name: "IN", side: "left", offset: 0.5, kind: "in" }
         ];
-        base.state = false;
     } else if (type === "SWITCH") {
         base.w = 50;
         base.h = 30;
         base.pins = [
             { name: "OUT", side: "right", offset: 0.5, kind: "out" }
         ];
-        base.state = false;
     } else if (type === "AND" || type === "OR") {
         base.pins = [
             { name: "A", side: "left", offset: 0.3, kind: "in" },
             { name: "B", side: "left", offset: 0.7, kind: "in" },
             { name: "OUT", side: "right", offset: 0.5, kind: "out" }
         ];
-        base.state = false;
     } else if (type === "NOT") {
         base.pins = [
             { name: "IN", side: "left", offset: 0.5, kind: "in" },
             { name: "OUT", side: "right", offset: 0.5, kind: "out" }
         ];
-        base.state = false;
     }
 
     return base;
 }
 
-// --- Koordinaten-Helfer ---
-
+// --- Koordinaten-Konvertierung ---
 function worldToScreen(x, y) {
     return {
         x: (x - pan.x) * zoom,
@@ -114,29 +107,33 @@ function getPinPosition(comp, pin) {
 }
 
 // --- Zeichnen ---
-
 function drawGrid() {
     ctx.save();
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
     ctx.translate(-pan.x * zoom, -pan.y * zoom);
     ctx.scale(zoom, zoom);
 
     ctx.strokeStyle = "#333";
     ctx.lineWidth = 1 / zoom;
 
-    const width = canvas.width / zoom;
-    const height = canvas.height / zoom;
+    const startX = Math.floor(pan.x / gridSize) * gridSize;
+    const startY = Math.floor(pan.y / gridSize) * gridSize;
+    const endX = startX + canvas.width / zoom + gridSize;
+    const endY = startY + canvas.height / zoom + gridSize;
 
-    for (let x = Math.floor(pan.x / gridSize) * gridSize; x < pan.x + width; x += gridSize) {
+    for (let x = startX; x < endX; x += gridSize) {
         ctx.beginPath();
-        ctx.moveTo(x, pan.y);
-        ctx.lineTo(x, pan.y + height);
+        ctx.moveTo(x, startY);
+        ctx.lineTo(x, endY);
         ctx.stroke();
     }
 
-    for (let y = Math.floor(pan.y / gridSize) * gridSize; y < pan.y + height; y += gridSize) {
+    for (let y = startY; y < endY; y += gridSize) {
         ctx.beginPath();
-        ctx.moveTo(pan.x, y);
-        ctx.lineTo(pan.x + width, y);
+        ctx.moveTo(startX, y);
+        ctx.lineTo(endX, y);
         ctx.stroke();
     }
 
@@ -161,7 +158,8 @@ function drawComponents() {
         // Typ-Text
         ctx.fillStyle = "white";
         ctx.font = `${10 / zoom}px sans-serif`;
-        ctx.fillText(c.type, c.x + 4, c.y + 12);
+        ctx.textAlign = "left";
+        ctx.fillText(c.type, c.x + 4, c.y + 14);
 
         // Zustand (für LED / SWITCH)
         if (c.type === "LED") {
@@ -184,7 +182,8 @@ function drawComponents() {
 
             ctx.fillStyle = "#aaa";
             ctx.font = `${8 / zoom}px sans-serif`;
-            let tx = pos.x + (p.side === "left" ? -18 : 8);
+            ctx.textAlign = p.side === "left" ? "right" : "left";
+            let tx = pos.x + (p.side === "left" ? -8 : 8);
             let ty = pos.y + 3;
             ctx.fillText(p.name, tx, ty);
         });
@@ -218,7 +217,7 @@ function drawWires() {
         ctx.stroke();
     });
 
-    // temporäre Leitung
+    // Temporäre Leitung beim Zeichnen
     if (draggingWire) {
         const fromComp = components.find(c => c.id === draggingWire.from.compId);
         if (fromComp) {
@@ -240,33 +239,24 @@ function drawWires() {
 }
 
 function render() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawGrid();
     drawWires();
     drawComponents();
 }
 
 // --- Logik-Simulation ---
-
 function simulate() {
-    // einfache, iterative Simulation
-    // 1. alle Outputs auf false
+    // Reset alle States außer SWITCH
     components.forEach(c => {
         if (c.type !== "SWITCH") c.state = false;
     });
 
-    // 2. Schalter behalten ihren Zustand
-    // 3. mehrmals durchlaufen, um Signale zu propagieren
+    // Mehrmals durchlaufen für Signalausbreitung
     for (let iter = 0; iter < 5; iter++) {
         components.forEach(c => {
-            // Nur in Logik-Modus simulieren (außer LED und SWITCH)
-            if (c.mode !== "logik") {
-                if (c.type !== "LED" && c.type !== "SWITCH") return;
-            }
+            if (c.mode !== "logik") return;
 
-            if (c.type === "SWITCH") {
-                // state bleibt wie er ist
-            } else if (c.type === "AND") {
+            if (c.type === "AND") {
                 const a = getInputValue(c, "A");
                 const b = getInputValue(c, "B");
                 c.state = a && b;
@@ -277,9 +267,13 @@ function simulate() {
             } else if (c.type === "NOT") {
                 const a = getInputValue(c, "IN");
                 c.state = !a;
-            } else if (c.type === "LED") {
-                const a = getInputValue(c, "IN");
-                c.state = a;
+            }
+        });
+
+        // LED auch im Logik-Modus aktualisieren
+        components.forEach(c => {
+            if (c.type === "LED" && c.mode === "logik") {
+                c.state = getInputValue(c, "IN");
             }
         });
     }
@@ -288,14 +282,10 @@ function simulate() {
 }
 
 function getInputValue(comp, pinName) {
-    // finde Pin
     const pinIndex = comp.pins.findIndex(p => p.name === pinName && p.kind === "in");
     if (pinIndex === -1) return false;
 
-    // finde Leitung, die auf diesen Pin geht
-    const w = wires.find(w =>
-        w.to.compId === comp.id && w.to.pinIndex === pinIndex
-    );
+    const w = wires.find(w => w.to.compId === comp.id && w.to.pinIndex === pinIndex);
     if (!w) return false;
 
     const fromComp = components.find(c => c.id === w.from.compId);
@@ -305,17 +295,11 @@ function getInputValue(comp, pinName) {
 }
 
 // --- Hit-Tests ---
-
 function hitComponent(worldX, worldY) {
     for (let i = components.length - 1; i >= 0; i--) {
         const c = components[i];
         if (c.mode !== mode) continue;
-        if (
-            worldX >= c.x &&
-            worldX <= c.x + c.w &&
-            worldY >= c.y &&
-            worldY <= c.y + c.h
-        ) {
+        if (worldX >= c.x && worldX <= c.x + c.w && worldY >= c.y && worldY <= c.y + c.h) {
             return c;
         }
     }
@@ -331,7 +315,7 @@ function hitPin(worldX, worldY) {
             const pos = getPinPosition(c, p);
             const dx = worldX - pos.x;
             const dy = worldY - pos.y;
-            if (dx * dx + dy * dy <= 8 * 8) {
+            if (dx * dx + dy * dy <= 64) {
                 return { comp: c, pinIndex: j, pin: p };
             }
         }
@@ -339,8 +323,7 @@ function hitPin(worldX, worldY) {
     return null;
 }
 
-// --- Interaktion (Touch) ---
-
+// --- Touch-Interaktion ---
 let activeTouches = [];
 
 canvas.addEventListener("touchstart", e => {
@@ -352,14 +335,11 @@ canvas.addEventListener("touchstart", e => {
         const { x, y } = screenToWorld(t.clientX, t.clientY);
 
         const pinHit = hitPin(x, y);
-        if (pinHit) {
-            // Leitung starten (nur von Output-Pins)
-            if (pinHit.pin.kind === "out") {
-                draggingWire = {
-                    from: { compId: pinHit.comp.id, pinIndex: pinHit.pinIndex },
-                    tempPos: { x, y }
-                };
-            }
+        if (pinHit && pinHit.pin.kind === "out") {
+            draggingWire = {
+                from: { compId: pinHit.comp.id, pinIndex: pinHit.pinIndex },
+                tempPos: { x, y }
+            };
             return;
         }
 
@@ -369,13 +349,10 @@ canvas.addEventListener("touchstart", e => {
             draggingOffset.x = x - comp.x;
             draggingOffset.y = y - comp.y;
 
-            // Schalter toggeln, wenn kurz angetippt
             if (comp.type === "SWITCH") {
                 comp.state = !comp.state;
                 simulate();
             }
-        } else {
-            draggingComp = null;
         }
     } else if (activeTouches.length === 2) {
         lastTouchDist = distance(activeTouches[0], activeTouches[1]);
@@ -409,13 +386,10 @@ canvas.addEventListener("touchmove", e => {
         const t1 = activeTouches[0];
         const t2 = activeTouches[1];
         const newDist = distance(t1, t2);
-        const center = {
-            x: (t1.clientX + t2.clientX) / 2,
-            y: (t1.clientY + t2.clientY) / 2
-        };
 
         if (lastTouchDist) {
             const factor = newDist / lastTouchDist;
+            const center = { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
             const before = screenToWorld(center.x, center.y);
             zoom *= factor;
             zoom = Math.max(0.3, Math.min(zoom, 3));
@@ -425,7 +399,6 @@ canvas.addEventListener("touchmove", e => {
         }
 
         lastTouchDist = newDist;
-        lastPanCenter = center;
         render();
     }
 });
@@ -435,7 +408,6 @@ canvas.addEventListener("touchend", e => {
     activeTouches = Array.from(e.touches);
 
     if (draggingComp) {
-        // Snap to grid
         draggingComp.x = Math.round(draggingComp.x / gridSize) * gridSize;
         draggingComp.y = Math.round(draggingComp.y / gridSize) * gridSize;
         draggingComp = null;
@@ -446,7 +418,6 @@ canvas.addEventListener("touchend", e => {
         const { x, y } = draggingWire.tempPos;
         const pinHit = hitPin(x, y);
         if (pinHit && pinHit.pin.kind === "in") {
-            // Verbindung erstellen
             wires.push({
                 from: draggingWire.from,
                 to: { compId: pinHit.comp.id, pinIndex: pinHit.pinIndex }
@@ -469,14 +440,13 @@ function distance(t1, t2) {
     return Math.sqrt(dx * dx + dy * dy);
 }
 
-// --- Toolbar-Interaktion ---
-
+// --- Toolbar ---
 const tools = Array.from(document.querySelectorAll(".tool"));
 const modeLabel = document.getElementById("mode-label");
 const saveBtn = document.getElementById("save-btn");
 const loadBtn = document.getElementById("load-btn");
 
-// Toolbar-Button für Elektronik-Modus als aktiv markieren
+// Elektronik als Standard aktiv
 tools.forEach(tool => {
     if (tool.getAttribute("data-mode") === "elektronik") {
         tool.classList.add("active");
@@ -508,15 +478,9 @@ tools.forEach(tool => {
 });
 
 saveBtn.addEventListener("click", () => {
-    const data = {
-        components,
-        wires,
-        nextId,
-        pan,
-        zoom
-    };
+    const data = { components, wires, nextId, pan, zoom };
     localStorage.setItem("baukasten-save", JSON.stringify(data));
-    alert("Gespeichert");
+    alert("Gespeichert!");
 });
 
 loadBtn.addEventListener("click", () => {
@@ -534,9 +498,9 @@ loadBtn.addEventListener("click", () => {
         zoom = data.zoom || 1;
         simulate();
     } catch (e) {
-        alert("Fehler beim Laden");
+        alert("Fehler beim Laden!");
     }
 });
 
-// Initial
-simulate();
+// Start
+render();
